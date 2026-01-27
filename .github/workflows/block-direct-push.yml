@@ -272,6 +272,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Do not auto-reapply workflow changes
+          if [ "${TOUCHES_WORKFLOWS}" = "true" ]; then
+            echo "Workflow files changed. Reapply must be manual."
+            exit 0
+          fi
+
           if [ "${TOUCHES_WORKFLOWS}" = "true" ] && [ -z "${{ secrets.ADMIN_PAT }}" ]; then
             echo "Reapply would touch .github/workflows/. Set ADMIN_PAT with repo+workflow scopes."
             exit 1
