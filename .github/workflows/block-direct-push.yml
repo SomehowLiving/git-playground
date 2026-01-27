@@ -293,21 +293,18 @@ jobs:
           git fetch --all
           git checkout main
 
-                    
-          # VERIFY revert actually removed the direct-push changes
-          
-          # Tree of the direct-push commit (from the original push)
-          direct_push_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          before=$(git rev-parse HEAD)
 
-          # Tree of current main (after revert PR merge)
-          current_main_tree=$(git rev-parse "HEAD^{tree}")
+          git pull --ff-only origin main
 
-          if [ "$direct_push_tree" = "$current_main_tree" ]; then
-            echo "Main still contains direct-push changes. Revert not effective. Aborting reapply."
+          after=$(git rev-parse HEAD)
+
+          if [ "$before" = "$after" ]; then
+            echo "Main was not reverted. Aborting reapply."
             exit 1
           fi
 
-          echo "Main no longer contains direct-push changes. Safe to reapply."
+
           git checkout -b "$BRANCH"
 
           # cherry-pick commits in original order (oldest -> newest)
