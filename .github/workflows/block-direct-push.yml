@@ -41,11 +41,15 @@ jobs:
           jq -r '.commits[]? | "\(.id) \(.message)"' "$GITHUB_EVENT_PATH" || true
       
       - name: Abort early for automation commits
+        id: automation_guard
         run: |
-          if echo "${{ github.event.head_commit.message }}" | grep -q '\[auto-'; then
+          if echo "${{ github.event.head_commit.message }}" | grep -Eq '\[(auto-revert|auto-reapply)\]'; then
             echo "Automation commit detected. Skipping enforcement."
-            exit 0
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
           fi
+
 
       - name: Get list of files changed in push
         id: detect_files
@@ -75,7 +79,6 @@ jobs:
 
       - name: Abort if this push came from a PR merge
         if: steps.check_pr.outputs.pulls_count != '0'
-        id: skip
         run: |
           echo "Commit is associated with a PR. Skipping enforcement."
           echo "should_run=false" >> $GITHUB_OUTPUT
@@ -97,7 +100,7 @@ jobs:
       - name: Create revert branch & PR (revert direct push)
         if: |
           steps.check_pr.outputs.pulls_count == '0' &&
-          steps.skip.outputs.should_run != 'false'
+          steps.automation_guard.outputs.should_run != 'false'
 
         id: revert
         env:
@@ -251,10 +254,19 @@ jobs:
             -d "$payload")
 
           merged=$(echo "$resp" | jq -r '.merged // false')
+          merge_sha=$(echo "$resp" | jq -r '.sha // empty')
+
           if [ "$merged" != "true" ]; then
             echo "Revert PR not merged. Stopping workflow."
             exit 0
           fi
+
+          if [ -z "$merge_sha" ]; then
+            echo "Could not determine revert merge commit SHA."
+            exit 1
+          fi
+
+          echo "REVERT_MERGE_SHA=$merge_sha" >> $GITHUB_ENV
 
       - name: Reapply commits as a PR (cherry-pick original commits into a PR)
         run: |
@@ -287,16 +299,12 @@ jobs:
           git fetch --all
           git checkout main
 
-          # Verify that direct-push changes are NOT present on main anymore
-          direct_push_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
-          current_main_tree=$(git rev-parse "HEAD^{tree}")
-
-          if [ "$direct_push_tree" = "$current_main_tree" ]; then
-            echo "Main still contains direct-push changes. Revert not effective. Aborting reapply."
+          if ! git merge-base --is-ancestor "$REVERT_MERGE_SHA" HEAD; then
+            echo "Revert commit is NOT present on main. Aborting reapply."
             exit 1
           fi
 
-          echo "Main no longer contains direct-push changes. Safe to reapply."
+          echo "Revert commit detected on main. Safe to reapply."
 
           git checkout -b "$BRANCH"
 
