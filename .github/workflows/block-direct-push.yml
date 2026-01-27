@@ -134,7 +134,7 @@ jobs:
 
           # checkout full repo history using actions/checkout equivalent via git clone (explicit token avoids relying on checkout step)
           SHORT_SHA=${GITHUB_SHA::7}
-          BRANCH="revert/direct-push-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          BRANCH="revert/direct-push-${SHORT_SHA}"
           git clone --no-tags "https://x-access-token:${AUTH_TOKEN}@github.com/${REPO}.git" repo
           cd repo
           git fetch --all
@@ -281,7 +281,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
           SHORT_SHA=${GITHUB_SHA::7}
-          BRANCH="reapply/direct-push-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          BRANCH="reapply/direct-push-${SHORT_SHA}"
           git clone --no-tags "https://x-access-token:${AUTH_TOKEN}@github.com/${REPO}.git" repo
           cd repo
           git fetch --all
