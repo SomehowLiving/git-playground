@@ -268,18 +268,6 @@ jobs:
             exit 0
           fi
 
-          # Verify that main actually changed after revert merge
-          before_sha=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')
-
-          sleep 2
-
-          after_sha=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')
-
-          if [ "$before_sha" = "$after_sha" ]; then
-            echo "Revert PR merge did not modify main. Aborting reapply."
-            exit 0
-          fi
-
       - name: Reapply commits as a PR (cherry-pick original commits into a PR)
         run: |
           set -euo pipefail
