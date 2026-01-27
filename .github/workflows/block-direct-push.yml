@@ -39,6 +39,13 @@ jobs:
           echo "Event type: $GITHUB_EVENT_NAME"
           echo "Commits:"
           jq -r '.commits[]? | "\(.id) \(.message)"' "$GITHUB_EVENT_PATH" || true
+      
+      - name: Abort early for automation commits
+        run: |
+          if echo "${{ github.event.head_commit.message }}" | grep -q '\[auto-'; then
+            echo "Automation commit detected. Skipping enforcement."
+            exit 0
+          fi
 
       - name: Get list of files changed in push
         id: detect_files
@@ -58,6 +65,8 @@ jobs:
       - name: Abort if push event is from a PR merge
         id: pr_event_guard
         run: |
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
           if jq -e '.head_commit.message | startswith("Merge pull request #")' "$GITHUB_EVENT_PATH" >/dev/null; then
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -152,9 +161,10 @@ jobs:
             if [ "$parents" -gt 2 ]; then
               git revert --no-edit -m 1 "$c"
             else
-              git revert --no-edit -m 1 "$c"
-              git commit --amend -m "[auto-revert] Revert direct push $c"
+              git revert --no-edit "$c"
             fi
+
+            git commit --amend -m "[auto-revert] Revert direct push $c"
           done
 
           # push revert branch
@@ -226,7 +236,9 @@ jobs:
 
   approve-and-reapply:
     needs: detect-and-revert
-    if: ${{ needs.detect-and-revert.outputs.should_run == 'true' }}
+    if: |
+      needs.detect-and-revert.outputs.should_run == 'true' &&
+      needs.detect-and-revert.outputs.revert_pr_number != ''
     runs-on: ubuntu-latest
     env:
       REPO: ${{ github.repository }}
@@ -256,6 +268,18 @@ jobs:
             exit 0
           fi
 
+          # Verify that main actually changed after revert merge
+          before_sha=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')
+
+          sleep 2
+
+          after_sha=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | awk '{print $1}')
+
+          if [ "$before_sha" = "$after_sha" ]; then
+            echo "Revert PR merge did not modify main. Aborting reapply."
+            exit 0
+          fi
+
       - name: Reapply commits as a PR (cherry-pick original commits into a PR)
         run: |
           set -euo pipefail
@@ -275,8 +299,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
           SHORT_SHA=${GITHUB_SHA::7}
-          BRANCH="reapply/direct-push-${SHORT_SHA}"
-
+          BRANCH="reapply/direct-push-${SHORT_SHA}-${GITHUB_RUN_ID}"
           git clone --no-tags "https://x-access-token:${AUTH_TOKEN}@github.com/${REPO}.git" repo
           cd repo
           git fetch --all
