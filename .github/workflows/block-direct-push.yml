@@ -62,16 +62,6 @@ jobs:
             echo "touches_workflows=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Abort if push event is from a PR merge
-        id: pr_event_guard
-        run: |
-          echo "should_run=true" >> "$GITHUB_OUTPUT"
-
-          if jq -e '.head_commit.message | startswith("Merge pull request #")' "$GITHUB_EVENT_PATH" >/dev/null; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
       - name: Check whether commit is associated with a PR
         id: check_pr
         run: |
@@ -84,14 +74,11 @@ jobs:
           echo "pulls_count=$count" >> $GITHUB_OUTPUT
 
       - name: Abort if this push came from a PR merge (or has associated PR)
-        if: |
-          steps.check_pr.outputs.pulls_count != '0' ||
-          steps.pr_event_guard.outputs.should_run == 'false'
+        if: steps.check_pr.outputs.pulls_count != '0'
         id: skip
         run: |
-          echo "This commit is associated with a PR (merge). Nothing to do."
+          echo "Commit is associated with a PR. Skipping enforcement."
           echo "should_run=false" >> $GITHUB_OUTPUT
-          echo "touches_workflows=false" >> $GITHUB_OUTPUT
 
       - name: Prepare auth token (ADMIN_PAT preferred when workflows changed)
         id: auth
@@ -107,9 +94,7 @@ jobs:
           echo "auth_token=$AUTH" >> $GITHUB_OUTPUT
 
       - name: Create revert branch & PR (revert direct push)
-        if: |
-          steps.check_pr.outputs.pulls_count == '0' &&
-          steps.skip.outputs.should_run != 'false'
+        if: steps.check_pr.outputs.pulls_count == '0'
 
         id: revert
         env:
