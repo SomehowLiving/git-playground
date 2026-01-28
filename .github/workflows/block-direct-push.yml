@@ -147,11 +147,11 @@ jobs:
 
           for c in $commits; do
             echo "Reverting commit $c"
-            # merge commits have >1 parent; handle revert of merge commits with -m 1
-            parents=$(git rev-list --parents -n 1 "$c" | wc -w | tr -d ' ')
-            if [ "$parents" -gt 2 ]; then
+            if git show -s --format=%P "$c" | grep -q ' '; then
+              # Real merge commit (GitHub PR merge)
               git revert --no-edit -m 1 "$c"
             else
+              # Normal commit (even if message says "Merge pull request")
               git revert --no-edit "$c"
             fi
 
